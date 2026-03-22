@@ -44,9 +44,10 @@ App.Main = {
       });
     }
 
-    // Check if 3D was persisted
-    if (App.UI.config.render3D) {
-      this._enable3D();
+    // Don't auto-enable 3D on load — wait for Launch or explicit toggle
+    // Reset render3D to false so 2D is the default view
+    if (App.UI.config.render3D && App.UI.config.shapeType !== 'cube') {
+      App.UI.config.render3D = false;
     }
 
     // Draw initial static scene
@@ -201,7 +202,7 @@ App.Main = {
     this.scaleFreqs = App.Scales.buildScale(c.baseNote, c.baseOctave, c.octaveRange, c.scale);
   },
 
-  _launch() {
+  async _launch() {
     App.Audio.ensureContext();
     App.Audio.setVolume(App.UI.config.volume);
     App.Audio.setReverb(App.UI.config.reverb);
@@ -217,6 +218,15 @@ App.Main = {
 
     // Sync all config to physics
     Object.assign(App.Physics.config, App.UI.config);
+
+    // Auto-enable/disable 3D based on shape
+    const needs3D = App.UI.config.shapeType === 'cube';
+    if (needs3D && !this.use3D) {
+      await this._enable3D();
+    } else if (!needs3D && this.use3D) {
+      this._disable3D();
+    }
+
     const size = this.use3D ? App.Renderer3D.getSize() : App.Renderer.getSize();
     App.Physics.updateWalls(size.width, size.height);
     App.Physics.launchBalls();
