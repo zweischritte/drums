@@ -194,8 +194,15 @@ App.UI = {
       ], this.config.instrument, 'instrument'),
     ]);
 
-    // Instrument Zones section
-    this._buildZonesUI(panel);
+    // Instrument Zones section (V-shape)
+    if (isV) {
+      this._buildZonesUI(panel);
+    }
+
+    // Per-wall instruments (polygon shapes)
+    if (!isV && App.Physics.walls.length > 0) {
+      this._buildWallInstrumentsUI(panel);
+    }
 
     this._addSection(panel, 'Audio', [
       this._createSlider('Reverb', 0, 100, 1, this.config.reverb * 100, 'reverb', '%', 0.01),
@@ -235,6 +242,90 @@ App.UI = {
 
     // Presets section
     this._buildPresetsUI(panel);
+  },
+
+  // --- Per-wall instruments (polygon shapes) ---
+  _buildWallInstrumentsUI(panel) {
+    const section = document.createElement('div');
+    section.className = 'section';
+    const h2 = document.createElement('h2');
+    h2.textContent = 'Wall Instruments';
+    section.appendChild(h2);
+
+    const walls = App.Physics.walls;
+    const hueMap = App.Renderer.zoneHueMap;
+
+    walls.forEach((wall, i) => {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'display:flex;gap:4px;align-items:center;margin-bottom:4px;';
+
+      // Wall number label
+      const lbl = document.createElement('span');
+      lbl.style.cssText = 'font-size:11px;color:#8b949e;width:16px;';
+      lbl.textContent = (i + 1);
+      wrap.appendChild(lbl);
+
+      // Mute
+      const muteBtn = document.createElement('button');
+      muteBtn.textContent = wall.muted ? '\u{1F507}' : '\u{1F50A}';
+      muteBtn.style.cssText = 'width:22px;height:20px;padding:0;background:' + (wall.muted ? '#da3633' : '#30363d') + ';color:#c9d1d9;border:none;border-radius:3px;cursor:pointer;font-size:11px;';
+      muteBtn.addEventListener('click', () => {
+        wall.muted = !wall.muted;
+        this._buildWallInstrumentsUI_refresh(section, panel);
+      });
+      wrap.appendChild(muteBtn);
+
+      // Instrument select
+      const sel = document.createElement('select');
+      sel.style.cssText = 'flex:1;padding:3px;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:3px;font-size:11px;';
+      // "Default" option
+      const defOpt = document.createElement('option');
+      defOpt.value = '';
+      defOpt.textContent = '(global)';
+      defOpt.selected = !wall.instrument;
+      sel.appendChild(defOpt);
+      for (const opt of this._instrumentOptions) {
+        const o = document.createElement('option');
+        o.value = opt.v;
+        o.textContent = opt.l;
+        o.selected = opt.v === wall.instrument;
+        sel.appendChild(o);
+      }
+      sel.addEventListener('change', () => {
+        wall.instrument = sel.value || null;
+        this.onChange && this.onChange('wallInstruments', null);
+      });
+      wrap.appendChild(sel);
+
+      // Volume
+      const vol = document.createElement('input');
+      vol.type = 'range';
+      vol.min = 0; vol.max = 100; vol.value = Math.round((wall.volume || 1) * 100);
+      vol.style.cssText = 'width:40px;';
+      vol.addEventListener('input', () => {
+        wall.volume = parseInt(vol.value) / 100;
+      });
+      wrap.appendChild(vol);
+
+      section.appendChild(wrap);
+    });
+
+    panel.appendChild(section);
+  },
+
+  _buildWallInstrumentsUI_refresh(section, panel) {
+    const parent = section.parentNode;
+    const next = section.nextSibling;
+    parent.removeChild(section);
+    const newSection = document.createElement('div');
+    // Rebuild inline
+    const walls = App.Physics.walls;
+    newSection.className = 'section';
+    const h2 = document.createElement('h2');
+    h2.textContent = 'Wall Instruments';
+    newSection.appendChild(h2);
+    // Just rebuild the panel
+    this._buildControls(parent);
   },
 
   // --- Instrument list ---
