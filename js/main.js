@@ -53,10 +53,20 @@ App.Main = {
       App.Physics.config[key] = value;
     }
 
-    if (key === 'vAngle' || key === 'wallCurve') {
-      App.Physics.config.wallCurve = App.UI.config.wallCurve;
+    if (key === 'vAngle' || key === 'wallCurve' || key === 'shapeType' || key === 'shapeRotation') {
+      App.Physics.config[key] = App.UI.config[key];
+      // Auto-switch to linear for non-V shapes
+      if (key === 'shapeType' && value !== 'v' && App.UI.config.mode === 'pendulum') {
+        App.UI.config.mode = 'linear';
+        App.Physics.config.mode = 'linear';
+      }
       const size = App.Renderer.getSize();
       App.Physics.updateWalls(size.width, size.height);
+      if (key === 'shapeType' || key === 'shapeRotation') {
+        // Rebuild UI to show/hide V-specific controls
+        const panel = document.getElementById('panel');
+        App.UI._buildControls(panel);
+      }
       if (!this.running) this._drawStatic();
     }
 
@@ -191,7 +201,11 @@ App.Main = {
       const freq = App.Scales.distanceToNote(c.normalizedDistance, this.scaleFreqs);
       const pan = c.wallSide === 'left' ? -1 : 1;
 
-      if (App.UI.config.useZones && App.UI.config.instrumentZones.length > 0) {
+      // Per-wall instrument takes priority
+      if (c.wall && c.wall.instrument && !c.wall.muted) {
+        const vol = c.wall.volume !== undefined ? c.wall.volume : 1.0;
+        App.Audio.playNote(freq, c.wall.instrument, c.velocity * vol, pan, c.normalizedDistance);
+      } else if (App.UI.config.useZones && App.UI.config.instrumentZones.length > 0) {
         this._playZonedNote(freq, c.normalizedDistance, c.velocity, pan);
       } else {
         App.Audio.playNote(freq, App.UI.config.instrument, c.velocity, pan, c.normalizedDistance);

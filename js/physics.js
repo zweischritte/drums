@@ -13,133 +13,50 @@ App.Physics = {
     startHeight: 0,
     spread: 100,
     launchAngle: 0,
-    // Pendulum mode
-    mode: 'pendulum',  // 'linear' or 'pendulum'
+    mode: 'pendulum',
     minRadius: 30,
     radiusStep: 30,
     swingSpeed: 2,
-    speedMode: 0,  // 0 = same angular speed, 100 = same ball (tangential) speed
-    wallCurve: 0,  // -1 (concave/inward) to +1 (convex/outward)
-    wallBounce: 1.0,  // wall plasticity: <1 = absorb energy, 1 = elastic, >1 = accelerate
-    friction: 0,      // space friction: 0 = none, 1 = heavy
+    speedMode: 0,
+    wallCurve: 0,
+    wallBounce: 1.0,
+    friction: 0,
+    shapeType: 'v',
+    shapeRotation: 0,
   },
 
-  vertex: { x: 0, y: 0 },
-  walls: {
-    left: { start: { x: 0, y: 0 }, end: { x: 0, y: 0 } },
-    right: { start: { x: 0, y: 0 }, end: { x: 0, y: 0 } }
-  },
+  // Multi-wall state
+  walls: [],
+  vertex: { x: 0, y: 0 },     // backward compat alias for ballSource (V-shape)
+  ballSource: { x: 0, y: 0 },
+  center: { x: 0, y: 0 },
   wallLength: 0,
-  // Wall angles from vertical (radians) for pendulum mode
-  wallAngleLeft: 0,
-  wallAngleRight: 0,
+  shapeResult: null,
   balls: [],
 
   updateWalls(canvasWidth, canvasHeight) {
-    const vx = canvasWidth / 2;
-    const vy = canvasHeight * 0.88;
-    this.vertex = { x: vx, y: vy };
+    const result = App.Shapes.generate(
+      this.config.shapeType || 'v',
+      canvasWidth, canvasHeight,
+      this.config
+    );
 
-    const halfAngle = (this.config.vAngle / 2) * Math.PI / 180;
-    this.wallLength = Math.min(canvasWidth, canvasHeight) * 0.85;
+    this.walls = result.walls;
+    this.ballSource = result.ballSource;
+    this.center = result.center;
+    this.wallLength = result.maxWallLength;
+    this.shapeResult = result;
 
-    // Store wall angles for pendulum boundary detection
-    // Angle measured from straight up (negative Y), clockwise positive
-    this.wallAngleLeft = -halfAngle;
-    this.wallAngleRight = halfAngle;
-
-    const leftEnd = {
-      x: vx - Math.sin(halfAngle) * this.wallLength,
-      y: vy - Math.cos(halfAngle) * this.wallLength
-    };
-    const rightEnd = {
-      x: vx + Math.sin(halfAngle) * this.wallLength,
-      y: vy - Math.cos(halfAngle) * this.wallLength
-    };
-
-    // Curve control point: perpendicular offset at the midpoint of each wall
-    const curve = this.config.wallCurve || 0;
-    const curveOffset = curve * this.wallLength * 0.25;
-
-    // Left wall midpoint + perpendicular
-    const lmx = (vx + leftEnd.x) / 2;
-    const lmy = (vy + leftEnd.y) / 2;
-    // Perpendicular to left wall (pointing inward = toward center)
-    const ldx = leftEnd.x - vx;
-    const ldy = leftEnd.y - vy;
-    const lLen = Math.sqrt(ldx * ldx + ldy * ldy);
-    // Perpendicular: rotate 90° clockwise (inward for left wall)
-    const lnx = ldy / lLen;
-    const lny = -ldx / lLen;
-
-    const rmx = (vx + rightEnd.x) / 2;
-    const rmy = (vy + rightEnd.y) / 2;
-    const rdx = rightEnd.x - vx;
-    const rdy = rightEnd.y - vy;
-    const rLen = Math.sqrt(rdx * rdx + rdy * rdy);
-    // Perpendicular: rotate 90° counter-clockwise (inward for right wall)
-    const rnx = -rdy / rLen;
-    const rny = rdx / rLen;
-
-    this.walls.left = {
-      start: { x: vx, y: vy },
-      end: leftEnd,
-      cp: { x: lmx + lnx * curveOffset, y: lmy + lny * curveOffset }
-    };
-    this.walls.right = {
-      start: { x: vx, y: vy },
-      end: rightEnd,
-      cp: { x: rmx + rnx * curveOffset, y: rmy + rny * curveOffset }
-    };
-
-    // Precompute wall data for both modes
-    this._precomputeWallData();
+    // Backward compat for V-shape pendulum
+    this.vertex = this.ballSource;
   },
 
-  _precomputeWallData() {
-    const N = 40;
-    for (const key of ['left', 'right']) {
-      const wall = this.walls[key];
-      const polar = [];
-      const segments = [];
-
-      // Sample bezier at N+1 points
-      const points = [];
-      for (let i = 0; i <= N; i++) {
-        const t = i / N;
-        const mt = 1 - t;
-        points.push({
-          x: mt * mt * wall.start.x + 2 * mt * t * wall.cp.x + t * t * wall.end.x,
-          y: mt * mt * wall.start.y + 2 * mt * t * wall.cp.y + t * t * wall.end.y,
-        });
-      }
-
-      // Build segments for linear collision
-      for (let i = 0; i < N; i++) {
-        segments.push({ a: points[i], b: points[i + 1] });
-      }
-      wall.segments = segments;
-
-      // Build polar lookup for pendulum collision
-      for (let i = 1; i <= N; i++) {
-        const dx = points[i].x - this.vertex.x;
-        const dy = points[i].y - this.vertex.y;
-        const radius = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dx, -dy);
-        if (radius > 1) {
-          polar.push({ radius, angle });
-        }
-      }
-      polar.sort((a, b) => a.radius - b.radius);
-      wall.polar = polar;
-    }
-  },
-
-  _wallAngleAtRadius(wallKey, radius) {
-    const polar = this.walls[wallKey].polar;
+  _wallAngleAtRadius(wallIndex, radius) {
+    const wall = this.walls[wallIndex];
+    const polar = wall ? wall.polar : null;
     if (!polar || polar.length === 0) {
       const halfAngle = (this.config.vAngle / 2) * Math.PI / 180;
-      return wallKey === 'left' ? -halfAngle : halfAngle;
+      return wallIndex === 0 ? -halfAngle : halfAngle;
     }
     if (radius <= polar[0].radius) return polar[0].angle;
     if (radius >= polar[polar.length - 1].radius) return polar[polar.length - 1].angle;
@@ -155,8 +72,9 @@ App.Physics = {
   launchBalls() {
     this.balls = [];
     const n = this.config.numBalls;
+    const isV = (this.config.shapeType || 'v') === 'v';
 
-    if (this.config.mode === 'pendulum') {
+    if (this.config.mode === 'pendulum' && isV) {
       this._launchPendulum(n);
     } else {
       this._launchLinear(n);
@@ -164,20 +82,11 @@ App.Physics = {
   },
 
   _launchPendulum(n) {
-    const halfAngle = (this.config.vAngle / 2) * Math.PI / 180;
     const startAngle = this.config.launchAngle * Math.PI / 180;
 
     for (let i = 0; i < n; i++) {
-      // Each ball gets a different radius (distance from vertex)
       const radius = this.config.minRadius + i * this.config.radiusStep;
 
-      // Current angular position (angle from vertical, 0 = straight up)
-      // All start at the same angle
-      const angle = startAngle;
-
-      // Angular velocity (radians per second)
-      // speedMode: 0 = same angular speed (outer balls faster in abs),
-      //           100 = same tangential speed (inner balls faster angularly)
       const baseSpeed = this.config.swingSpeed;
       const refRadius = this.config.minRadius + ((n - 1) / 2) * this.config.radiusStep;
       const sameAngular = baseSpeed;
@@ -186,25 +95,19 @@ App.Physics = {
       const angularVel = sameAngular * (1 - blend) + sameTangential * blend;
 
       const hue = (i / n) * 360;
-
-      // Position on the arc
-      const x = this.vertex.x + Math.sin(angle) * radius;
-      const y = this.vertex.y - Math.cos(angle) * radius;
+      const x = this.vertex.x + Math.sin(startAngle) * radius;
+      const y = this.vertex.y - Math.cos(startAngle) * radius;
 
       this.balls.push({
-        // Current position (computed from angle + radius)
-        x: x,
-        y: y,
+        x, y,
         originX: this.vertex.x,
         originY: this.vertex.y,
-        // Pendulum state
-        pendulumAngle: angle,
+        pendulumAngle: startAngle,
         pendulumRadius: radius,
-        angularVel: angularVel,
-        // Visual
+        angularVel,
         radius: this.config.ballRadius,
         color: `hsl(${hue}, 90%, 60%)`,
-        hue: hue,
+        hue,
         alive: true,
         lastCollisionTime: 0,
         bounceCount: 0,
@@ -214,41 +117,72 @@ App.Physics = {
   },
 
   _launchLinear(n) {
-    const halfAngle = (this.config.vAngle / 2) * Math.PI / 180;
-    const margin = halfAngle * 0.08;
-    const spreadFactor = this.config.spread / 100;
-    const baseAngle = this.config.launchAngle * Math.PI / 180;
+    const isV = (this.config.shapeType || 'v') === 'v';
+    const src = this.ballSource;
 
-    for (let i = 0; i < n; i++) {
-      const t = n === 1 ? 0 : i / (n - 1);
-      const fanAngle = -halfAngle + margin + t * (2 * halfAngle - 2 * margin);
-      const angle = baseAngle * (1 - spreadFactor) + fanAngle * spreadFactor;
+    if (isV) {
+      // V-shape: fan within the V angle
+      const halfAngle = (this.config.vAngle / 2) * Math.PI / 180;
+      const margin = halfAngle * 0.08;
+      const spreadFactor = this.config.spread / 100;
+      const baseAngle = this.config.launchAngle * Math.PI / 180;
 
-      const speed = this.config.ballSpeed;
-      const vx = Math.sin(angle) * speed + this.config.sideSpeed;
-      const vy = -Math.cos(angle) * speed + this.config.verticalSpeed;
+      for (let i = 0; i < n; i++) {
+        const t = n === 1 ? 0 : i / (n - 1);
+        const fanAngle = -halfAngle + margin + t * (2 * halfAngle - 2 * margin);
+        const angle = baseAngle * (1 - spreadFactor) + fanAngle * spreadFactor;
 
-      const staggerOffset = (n === 1) ? 0 : i * this.config.staggerHeight;
-      const startY = this.vertex.y - this.config.startHeight - staggerOffset;
-      const startX = this.vertex.x;
+        const speed = this.config.ballSpeed;
+        const vx = Math.sin(angle) * speed + this.config.sideSpeed;
+        const vy = -Math.cos(angle) * speed + this.config.verticalSpeed;
 
-      const hue = (i / n) * 360;
+        const staggerOffset = (n === 1) ? 0 : i * this.config.staggerHeight;
+        const startX = src.x;
+        const startY = src.y - this.config.startHeight - staggerOffset;
+        const hue = (i / n) * 360;
 
-      this.balls.push({
-        x: startX,
-        y: startY,
-        originX: startX,
-        originY: startY,
-        vx: vx,
-        vy: vy,
-        radius: this.config.ballRadius,
-        color: `hsl(${hue}, 90%, 60%)`,
-        hue: hue,
-        alive: true,
-        lastCollisionTime: 0,
-        bounceCount: 0,
-        mode: 'linear',
-      });
+        this.balls.push({
+          x: startX, y: startY,
+          originX: startX, originY: startY,
+          vx, vy,
+          radius: this.config.ballRadius,
+          color: `hsl(${hue}, 90%, 60%)`,
+          hue,
+          alive: true,
+          lastCollisionTime: 0,
+          bounceCount: 0,
+          mode: 'linear',
+        });
+      }
+    } else {
+      // Polygon: fan in all directions from center
+      const spreadFactor = this.config.spread / 100;
+      const baseAngle = this.config.launchAngle * Math.PI / 180;
+
+      for (let i = 0; i < n; i++) {
+        const t = n === 1 ? 0 : i / (n - 1);
+        // Full 360° fan spread, or narrow cone from launchAngle
+        const fanAngle = t * 2 * Math.PI;
+        const angle = baseAngle * (1 - spreadFactor) + fanAngle * spreadFactor;
+
+        const speed = this.config.ballSpeed;
+        const vx = Math.sin(angle) * speed;
+        const vy = -Math.cos(angle) * speed;
+        const hue = (i / n) * 360;
+
+        this.balls.push({
+          x: src.x, y: src.y,
+          originX: src.x, originY: src.y,
+          vx, vy,
+          radius: this.config.ballRadius,
+          color: `hsl(${hue}, 90%, 60%)`,
+          hue,
+          alive: true,
+          lastCollisionTime: 0,
+          bounceCount: 0,
+          mode: 'linear',
+        });
+      }
     }
   },
 
@@ -270,37 +204,36 @@ App.Physics = {
   },
 
   _updatePendulum(ball, dt, now, collisions) {
-    // Apply space friction (exponential decay of angular velocity)
     if (this.config.friction > 0) {
       const frictionFactor = 1 - this.config.friction * dt * 3;
       ball.angularVel *= Math.max(0, frictionFactor);
     }
 
-    // Move along arc
     const prevAngle = ball.pendulumAngle;
     ball.pendulumAngle += ball.angularVel * dt;
 
-    // Get wall boundary angle for this ball's radius (accounts for wall curvature)
-    const rightBound = this._wallAngleAtRadius('right', ball.pendulumRadius);
-    const leftBound = this._wallAngleAtRadius('left', ball.pendulumRadius);
+    // Walls[0] = left, walls[1] = right for V-shape
+    const leftBound = this._wallAngleAtRadius(0, ball.pendulumRadius);
+    const rightBound = this._wallAngleAtRadius(1, ball.pendulumRadius);
 
     let hitWall = null;
+    let hitWallIndex = -1;
 
     if (ball.pendulumAngle >= rightBound) {
       ball.pendulumAngle = rightBound - (ball.pendulumAngle - rightBound);
-      ball.angularVel = -ball.angularVel * this.config.wallBounce;
+      ball.angularVel = -ball.angularVel * (this.walls[1].bounce || this.config.wallBounce);
       hitWall = 'right';
+      hitWallIndex = 1;
     } else if (ball.pendulumAngle <= leftBound) {
       ball.pendulumAngle = leftBound - (ball.pendulumAngle - leftBound);
-      ball.angularVel = -ball.angularVel * this.config.wallBounce;
+      ball.angularVel = -ball.angularVel * (this.walls[0].bounce || this.config.wallBounce);
       hitWall = 'left';
+      hitWallIndex = 0;
     }
 
-    // Update position from angle + radius
     ball.x = this.vertex.x + Math.sin(ball.pendulumAngle) * ball.pendulumRadius;
     ball.y = this.vertex.y - Math.cos(ball.pendulumAngle) * ball.pendulumRadius;
 
-    // Generate collision event on wall hit — only play sound within wall range
     if (hitWall && (now - ball.lastCollisionTime) > 50) {
       ball.lastCollisionTime = now;
       ball.bounceCount++;
@@ -314,32 +247,30 @@ App.Physics = {
           distance: ball.pendulumRadius,
           maxDistance: this.wallLength,
           normalizedDistance: normDist,
-          ball: ball,
+          ball,
           velocity: Math.abs(ball.angularVel) / this.config.swingSpeed,
           wallSide: hitWall,
+          wallIndex: hitWallIndex,
+          wall: this.walls[hitWallIndex],
         });
       }
     }
   },
 
   _updateLinear(ball, dt, now, collisions) {
-    // Apply space friction
     if (this.config.friction > 0) {
       const frictionFactor = 1 - this.config.friction * dt * 3;
       ball.vx *= Math.max(0, frictionFactor);
       ball.vy *= Math.max(0, frictionFactor);
     }
 
-    // Apply gravity
     ball.vy += this.config.gravity * dt;
-
-    // Move
     ball.x += ball.vx * dt;
     ball.y += ball.vy * dt;
 
-    // Check wall collisions (against bezier segments)
-    for (const wallKey of ['left', 'right']) {
-      const wall = this.walls[wallKey];
+    // Check wall collisions against ALL walls
+    for (let wi = 0; wi < this.walls.length; wi++) {
+      const wall = this.walls[wi];
       const segs = wall.segments || [{ a: wall.start, b: wall.end }];
       let bestCol = null;
 
@@ -351,46 +282,43 @@ App.Physics = {
       }
 
       if (bestCol && (now - ball.lastCollisionTime) > 50) {
-        this._resolveCollision(ball, bestCol);
+        // Use per-wall bounce or global
+        const bounce = wall.bounce || this.config.wallBounce;
+        this._resolveCollision(ball, bestCol, bounce);
         ball.lastCollisionTime = now;
         ball.bounceCount++;
 
-        const dist = this._pointDistance(this.vertex, bestCol.point);
+        const dist = this._pointDistance(this.ballSource, bestCol.point);
         const normDist = dist / this.wallLength;
 
-        // Only play sound within wall range
-        if (normDist <= 1.0) {
+        if (normDist <= 1.5) {
+          // Determine wall side for stereo pan
+          const wallMidX = (wall.start.x + wall.end.x) / 2;
+          const side = wallMidX < this.center.x ? 'left' : 'right';
+
           collisions.push({
             x: bestCol.point.x,
             y: bestCol.point.y,
             distance: dist,
             maxDistance: this.wallLength,
-            normalizedDistance: normDist,
-            ball: ball,
+            normalizedDistance: Math.min(1, normDist),
+            ball,
             velocity: Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy) / this.config.ballSpeed,
-            wallSide: wallKey,
+            wallSide: side,
+            wallIndex: wi,
+            wall,
           });
         }
       }
     }
 
-    // Bounce off canvas edges instead of dying
-    const canvasW = this.vertex.x * 2;
-    const canvasH = this.vertex.y / 0.88;
-    if (ball.x < ball.radius) {
-      ball.x = ball.radius;
-      ball.vx = Math.abs(ball.vx);
-    } else if (ball.x > canvasW - ball.radius) {
-      ball.x = canvasW - ball.radius;
-      ball.vx = -Math.abs(ball.vx);
-    }
-    if (ball.y < ball.radius) {
-      ball.y = ball.radius;
-      ball.vy = Math.abs(ball.vy);
-    } else if (ball.y > canvasH - ball.radius) {
-      ball.y = canvasH - ball.radius;
-      ball.vy = -Math.abs(ball.vy);
-    }
+    // Bounce off canvas edges
+    const canvasW = this.center.x * 2;
+    const canvasH = this.center.y * 2;
+    if (ball.x < ball.radius) { ball.x = ball.radius; ball.vx = Math.abs(ball.vx); }
+    else if (ball.x > canvasW - ball.radius) { ball.x = canvasW - ball.radius; ball.vx = -Math.abs(ball.vx); }
+    if (ball.y < ball.radius) { ball.y = ball.radius; ball.vy = Math.abs(ball.vy); }
+    else if (ball.y > canvasH - ball.radius) { ball.y = canvasH - ball.radius; ball.vy = -Math.abs(ball.vy); }
   },
 
   _circleSegmentCollision(ball, A, B) {
@@ -399,7 +327,6 @@ App.Physics = {
     const APx = ball.x - A.x;
     const APy = ball.y - A.y;
     const abLenSq = ABx * ABx + ABy * ABy;
-
     if (abLenSq === 0) return { hit: false };
 
     let t = (APx * ABx + APy * ABy) / abLenSq;
@@ -407,7 +334,6 @@ App.Physics = {
 
     const closestX = A.x + t * ABx;
     const closestY = A.y + t * ABy;
-
     const dx = ball.x - closestX;
     const dy = ball.y - closestY;
     const distSq = dx * dx + dy * dy;
@@ -420,13 +346,13 @@ App.Physics = {
         point: { x: closestX, y: closestY },
         normal: { x: dx / dist, y: dy / dist },
         penetration: r - dist,
-        t: t
+        t
       };
     }
     return { hit: false };
   },
 
-  _resolveCollision(ball, col) {
+  _resolveCollision(ball, col, bounce) {
     ball.x += col.normal.x * (col.penetration + 0.5);
     ball.y += col.normal.y * (col.penetration + 0.5);
 
@@ -434,8 +360,7 @@ App.Physics = {
     ball.vx -= 2 * dot * col.normal.x;
     ball.vy -= 2 * dot * col.normal.y;
 
-    // Wall plasticity: <1 absorbs energy, 1 = elastic, >1 = accelerates
-    const bounce = this.config.wallBounce;
+    bounce = bounce || this.config.wallBounce;
     ball.vx *= bounce;
     ball.vy *= bounce;
   },

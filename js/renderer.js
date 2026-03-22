@@ -93,13 +93,14 @@ App.Renderer = {
 
   _drawWalls(ctx, walls) {
     const zones = App.UI && App.UI.config.useZones ? App.UI.config.instrumentZones : null;
+    const isV = (App.UI && App.UI.config.shapeType || 'v') === 'v';
 
-    for (const key of ['left', 'right']) {
-      const wall = walls[key];
-      const hasCurve = wall.cp && (wall.cp.x !== (wall.start.x + wall.end.x) / 2 ||
-                                     wall.cp.y !== (wall.start.y + wall.end.y) / 2);
+    for (let wi = 0; wi < walls.length; wi++) {
+      const wall = walls[wi];
+      if (!wall) continue;
+      const hasCurve = wall.curve && wall.curve !== 0 && wall.cp;
 
-      // Glow (always white)
+      // Glow
       ctx.beginPath();
       ctx.moveTo(wall.start.x, wall.start.y);
       if (hasCurve) {
@@ -112,53 +113,61 @@ App.Renderer = {
       ctx.lineCap = 'round';
       ctx.stroke();
 
-      if (zones && zones.length > 1) {
-        // Draw wall in zone colors
-        const N = 80;
-        let prevTo = 0;
-        let zoneIdx = 0;
+      // Determine wall color
+      let wallColor = 'rgba(255, 255, 255, 0.85)';
 
-        for (let seg = 0; seg < N; seg++) {
-          const t0 = seg / N;
-          const t1 = (seg + 1) / N;
-          const normDist = (t0 + t1) / 2; // midpoint of segment as normalized position
-
-          // Find zone for this segment
-          while (zoneIdx < zones.length - 1 && normDist > zones[zoneIdx].to) zoneIdx++;
-          const zone = zones[zoneIdx];
-          const hue = this.zoneHueMap[zone.instrument] || 0;
-          const muted = zone.muted;
-
-          // Bezier points at t0 and t1
-          const x0 = this._bezierAt(wall.start.x, wall.cp.x, wall.end.x, t0, hasCurve);
-          const y0 = this._bezierAt(wall.start.y, wall.cp.y, wall.end.y, t0, hasCurve);
-          const x1 = this._bezierAt(wall.start.x, wall.cp.x, wall.end.x, t1, hasCurve);
-          const y1 = this._bezierAt(wall.start.y, wall.cp.y, wall.end.y, t1, hasCurve);
-
-          ctx.beginPath();
-          ctx.moveTo(x0, y0);
-          ctx.lineTo(x1, y1);
-          ctx.strokeStyle = muted
-            ? `rgba(100, 100, 100, 0.4)`
-            : `hsla(${hue}, 70%, 55%, 0.85)`;
-          ctx.lineWidth = 3;
-          ctx.lineCap = 'round';
-          ctx.stroke();
-        }
-      } else {
-        // Single color wall
-        ctx.beginPath();
-        ctx.moveTo(wall.start.x, wall.start.y);
-        if (hasCurve) {
-          ctx.quadraticCurveTo(wall.cp.x, wall.cp.y, wall.end.x, wall.end.y);
-        } else {
-          ctx.lineTo(wall.end.x, wall.end.y);
-        }
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-        ctx.lineWidth = 3;
-        ctx.lineCap = 'round';
-        ctx.stroke();
+      if (wall.instrument) {
+        // Per-wall instrument color
+        const hue = this.zoneHueMap[wall.instrument] || 0;
+        wallColor = wall.muted
+          ? 'rgba(100, 100, 100, 0.4)'
+          : `hsla(${hue}, 70%, 55%, 0.85)`;
+      } else if (isV && zones && zones.length > 1) {
+        // V-shape with zones: draw colored segments
+        this._drawZonedWall(ctx, wall, hasCurve, zones);
+        continue;
       }
+
+      // Single color wall
+      ctx.beginPath();
+      ctx.moveTo(wall.start.x, wall.start.y);
+      if (hasCurve) {
+        ctx.quadraticCurveTo(wall.cp.x, wall.cp.y, wall.end.x, wall.end.y);
+      } else {
+        ctx.lineTo(wall.end.x, wall.end.y);
+      }
+      ctx.strokeStyle = wallColor;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+  },
+
+  _drawZonedWall(ctx, wall, hasCurve, zones) {
+    const N = 80;
+    let zoneIdx = 0;
+
+    for (let seg = 0; seg < N; seg++) {
+      const t0 = seg / N;
+      const t1 = (seg + 1) / N;
+      const normDist = (t0 + t1) / 2;
+
+      while (zoneIdx < zones.length - 1 && normDist > zones[zoneIdx].to) zoneIdx++;
+      const zone = zones[zoneIdx];
+      const hue = this.zoneHueMap[zone.instrument] || 0;
+
+      const x0 = this._bezierAt(wall.start.x, wall.cp ? wall.cp.x : (wall.start.x + wall.end.x) / 2, wall.end.x, t0, hasCurve);
+      const y0 = this._bezierAt(wall.start.y, wall.cp ? wall.cp.y : (wall.start.y + wall.end.y) / 2, wall.end.y, t0, hasCurve);
+      const x1 = this._bezierAt(wall.start.x, wall.cp ? wall.cp.x : (wall.start.x + wall.end.x) / 2, wall.end.x, t1, hasCurve);
+      const y1 = this._bezierAt(wall.start.y, wall.cp ? wall.cp.y : (wall.start.y + wall.end.y) / 2, wall.end.y, t1, hasCurve);
+
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.strokeStyle = zone.muted ? 'rgba(100,100,100,0.4)' : `hsla(${hue}, 70%, 55%, 0.85)`;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.stroke();
     }
   },
 

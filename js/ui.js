@@ -14,6 +14,8 @@ App.UI = {
     startHeight: 0,
     spread: 100,
     launchAngle: 0,
+    shapeType: 'v',
+    shapeRotation: 0,
     wallCurve: 0,
     wallBounce: 1.0,
     friction: 0,
@@ -110,8 +112,17 @@ App.UI = {
 
     panel.appendChild(btnRow);
 
-    // Mode selector
+    // Mode & Shape
     this._addSection(panel, 'Mode', [
+      this._createSelect('Shape', [
+        { v: 'v', l: 'V-Shape' },
+        { v: 'triangle', l: 'Triangle' },
+        { v: 'square', l: 'Square' },
+        { v: 'pentagon', l: 'Pentagon' },
+        { v: 'hexagon', l: 'Hexagon' },
+        { v: 'circle', l: 'Circle' },
+        { v: 'star', l: 'Star' },
+      ], this.config.shapeType || 'v', 'shapeType'),
       this._createSelect('Physics Mode', [
         { v: 'pendulum', l: 'Pendulum (Arc)' },
         { v: 'linear', l: 'Linear (Bounce)' },
@@ -119,8 +130,15 @@ App.UI = {
     ]);
 
     // Shared controls
+    const isV = (this.config.shapeType || 'v') === 'v';
+    const physicsControls = [];
+    if (isV) {
+      physicsControls.push(this._createSlider('V Angle', 20, 160, 1, this.config.vAngle, 'vAngle', '°'));
+    } else {
+      physicsControls.push(this._createSlider('Rotation', 0, 360, 1, this.config.shapeRotation || 0, 'shapeRotation', '°'));
+    }
     this._addSection(panel, 'Physics', [
-      this._createSlider('V Angle', 20, 160, 1, this.config.vAngle, 'vAngle', '°'),
+      ...physicsControls,
       this._createSlider('Balls', 1, 30, 1, this.config.numBalls, 'numBalls', ''),
       this._createSlider('Ball Size', 3, 15, 1, this.config.ballRadius, 'ballRadius', 'px'),
       this._createSlider('Launch Angle', -90, 90, 1, this.config.launchAngle, 'launchAngle', '°'),
