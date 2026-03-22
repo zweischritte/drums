@@ -75,7 +75,7 @@ App.Renderer3D = {
   async _loadThree() {
     if (window.THREE) return window.THREE;
     try {
-      const module = await import('https://cdn.jsdelivr.net/npm/three@0.172.0/build/three.module.min.js');
+      const module = await import('three');
       window.THREE = module;
       return module;
     } catch (e) {
@@ -86,7 +86,7 @@ App.Renderer3D = {
 
   async _loadOrbitControls(THREE) {
     try {
-      const module = await import('https://cdn.jsdelivr.net/npm/three@0.172.0/examples/jsm/controls/OrbitControls.js');
+      const module = await import('three/addons/controls/OrbitControls.js');
       this.controls = new module.OrbitControls(this.camera, this.renderer.domElement);
       this.controls.enableDamping = true;
       this.controls.dampingFactor = 0.05;
