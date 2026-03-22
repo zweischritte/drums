@@ -26,8 +26,8 @@ App.Renderer3D = {
     this.scene.fog = new THREE.FogExp2(0x0a2a1a, 0.002);
 
     // Camera
-    this.camera = new THREE.PerspectiveCamera(60, w / h, 0.1, 2000);
-    this.camera.position.set(0, 300, 500);
+    this.camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 3000);
+    this.camera.position.set(0, 500, 600);
     this.camera.lookAt(0, 0, 0);
 
     // Renderer
@@ -106,7 +106,7 @@ App.Renderer3D = {
     for (const m of this.wallMeshes) this.scene.remove(m);
     this.wallMeshes = [];
 
-    const wallHeight = 80;
+    const wallHeight = 120;
     const hueMap = App.Renderer.zoneHueMap;
 
     for (const wall of walls) {
@@ -150,7 +150,7 @@ App.Renderer3D = {
     const THREE = this.THREE;
     if (!THREE || !this.scene) return;
 
-    // Ensure we have enough ball meshes
+    // Ensure we have enough ball meshes and trail lines
     while (this.ballMeshes.length < balls.length) {
       const geo = new THREE.SphereGeometry(6, 16, 16);
       const mat = new THREE.MeshPhongMaterial({
@@ -162,25 +162,53 @@ App.Renderer3D = {
       mesh.castShadow = true;
       this.scene.add(mesh);
       this.ballMeshes.push(mesh);
+
+      // Trail line
+      const trailGeo = new THREE.BufferGeometry();
+      const positions = new Float32Array(60 * 3); // 60 trail points
+      trailGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      trailGeo.setDrawRange(0, 0);
+      const trailMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 });
+      const trail = new THREE.Line(trailGeo, trailMat);
+      this.scene.add(trail);
+      this.trailLines.push({ line: trail, points: [] });
     }
 
     // Update positions and visibility
     for (let i = 0; i < this.ballMeshes.length; i++) {
       const mesh = this.ballMeshes[i];
+      const trail = this.trailLines[i];
       if (i < balls.length && balls[i].alive) {
         const ball = balls[i];
+        const px = ball.x - center.x;
+        const pz = -(ball.y - center.y);
         mesh.visible = true;
-        mesh.position.x = ball.x - center.x;
-        mesh.position.z = -(ball.y - center.y);
-        mesh.position.y = 0;
+        mesh.position.set(px, 0, pz);
         mesh.scale.setScalar(ball.radius / 6);
 
-        // Update color
         const color = new THREE.Color(`hsl(${ball.hue}, 90%, 60%)`);
         mesh.material.color = color;
         mesh.material.emissive = color.clone().multiplyScalar(0.3);
+
+        // Update trail
+        trail.points.push({ x: px, y: 0, z: pz });
+        if (trail.points.length > 60) trail.points.shift();
+        trail.line.visible = true;
+        trail.line.material.color = color;
+        const posArr = trail.line.geometry.attributes.position.array;
+        for (let j = 0; j < trail.points.length; j++) {
+          posArr[j * 3] = trail.points[j].x;
+          posArr[j * 3 + 1] = trail.points[j].y;
+          posArr[j * 3 + 2] = trail.points[j].z;
+        }
+        trail.line.geometry.attributes.position.needsUpdate = true;
+        trail.line.geometry.setDrawRange(0, trail.points.length);
       } else {
         mesh.visible = false;
+        if (trail) {
+          trail.line.visible = false;
+          trail.points = [];
+        }
       }
     }
   },
