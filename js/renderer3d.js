@@ -106,42 +106,80 @@ App.Renderer3D = {
     for (const m of this.wallMeshes) this.scene.remove(m);
     this.wallMeshes = [];
 
-    const wallHeight = 120;
     const hueMap = App.Renderer.zoneHueMap;
 
     for (const wall of walls) {
-      const dx = wall.end.x - wall.start.x;
-      const dy = wall.end.y - wall.start.y;
-      const wallLen = Math.sqrt(dx * dx + dy * dy);
-      const angle = Math.atan2(dx, dy);
-
-      // Map 2D coords to 3D: x stays x (centered), z = -y (depth), y = height
-      const cx = ((wall.start.x + wall.end.x) / 2) - center.x;
-      const cz = -(((wall.start.y + wall.end.y) / 2) - center.y);
-
-      const geometry = new THREE.BoxGeometry(wallLen, wallHeight, 4);
       const hue = wall.instrument ? (hueMap[wall.instrument] || 0) : 0;
-      const color = wall.instrument
+      const baseColor = wall.instrument
         ? new THREE.Color(`hsl(${hue}, 60%, 40%)`)
-        : new THREE.Color(0x445544);
-      const opacity = wall.muted ? 0.2 : 0.7;
+        : new THREE.Color(0x335544);
+      const opacity = wall.muted ? 0.15 : 0.35;
 
-      const material = new THREE.MeshPhongMaterial({
-        color,
-        transparent: true,
-        opacity,
-        emissive: color.clone().multiplyScalar(0.2),
-        shininess: 60,
-      });
+      if (wall.plane3d) {
+        // 3D wall — use corners to build geometry
+        const c = wall.plane3d.corners;
+        const geometry = new THREE.BufferGeometry();
+        const vertices = new Float32Array([
+          c[0].x, c[0].y, c[0].z, c[1].x, c[1].y, c[1].z, c[2].x, c[2].y, c[2].z,
+          c[0].x, c[0].y, c[0].z, c[2].x, c[2].y, c[2].z, c[3].x, c[3].y, c[3].z,
+        ]);
+        geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+        geometry.computeVertexNormals();
 
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(cx, 0, cz);
-      mesh.rotation.y = -angle;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
+        const material = new THREE.MeshPhongMaterial({
+          color: baseColor,
+          transparent: true,
+          opacity,
+          emissive: baseColor.clone().multiplyScalar(0.15),
+          shininess: 40,
+          side: THREE.DoubleSide,
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        this.scene.add(mesh);
+        this.wallMeshes.push(mesh);
 
-      this.scene.add(mesh);
-      this.wallMeshes.push(mesh);
+        // Edge wireframe
+        const edgeGeo = new THREE.BufferGeometry();
+        const edgeVerts = new Float32Array([
+          c[0].x, c[0].y, c[0].z, c[1].x, c[1].y, c[1].z,
+          c[1].x, c[1].y, c[1].z, c[2].x, c[2].y, c[2].z,
+          c[2].x, c[2].y, c[2].z, c[3].x, c[3].y, c[3].z,
+          c[3].x, c[3].y, c[3].z, c[0].x, c[0].y, c[0].z,
+        ]);
+        edgeGeo.setAttribute('position', new THREE.BufferAttribute(edgeVerts, 3));
+        const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+        const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+        this.scene.add(edges);
+        this.wallMeshes.push(edges);
+      } else {
+        // 2D wall projected to 3D
+        const dx = wall.end.x - wall.start.x;
+        const dy = wall.end.y - wall.start.y;
+        const wallLen = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dx, dy);
+        const wallHeight = 120;
+
+        const cx = ((wall.start.x + wall.end.x) / 2) - center.x;
+        const cz = -(((wall.start.y + wall.end.y) / 2) - center.y);
+
+        const geometry = new THREE.BoxGeometry(wallLen, wallHeight, 4);
+        const material = new THREE.MeshPhongMaterial({
+          color: baseColor,
+          transparent: true,
+          opacity: wall.muted ? 0.2 : 0.7,
+          emissive: baseColor.clone().multiplyScalar(0.2),
+          shininess: 60,
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(cx, 0, cz);
+        mesh.rotation.y = -angle;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        this.scene.add(mesh);
+        this.wallMeshes.push(mesh);
+      }
     }
   },
 
@@ -180,10 +218,12 @@ App.Renderer3D = {
       const trail = this.trailLines[i];
       if (i < balls.length && balls[i].alive) {
         const ball = balls[i];
-        const px = ball.x - center.x;
-        const pz = -(ball.y - center.y);
+        // Use 3D coords if available, otherwise project from 2D
+        const px = ball.x3d !== undefined ? ball.x3d : (ball.x - center.x);
+        const py = ball.y3d !== undefined ? ball.y3d : 0;
+        const pz = ball.z3d !== undefined ? ball.z3d : -(ball.y - center.y);
         mesh.visible = true;
-        mesh.position.set(px, 0, pz);
+        mesh.position.set(px, py, pz);
         mesh.scale.setScalar(ball.radius / 6);
 
         const color = new THREE.Color(`hsl(${ball.hue}, 90%, 60%)`);
@@ -191,7 +231,7 @@ App.Renderer3D = {
         mesh.material.emissive = color.clone().multiplyScalar(0.3);
 
         // Update trail
-        trail.points.push({ x: px, y: 0, z: pz });
+        trail.points.push({ x: px, y: py, z: pz });
         if (trail.points.length > 60) trail.points.shift();
         trail.line.visible = true;
         trail.line.material.color = color;

@@ -2,6 +2,11 @@ window.App = window.App || {};
 
 App.Shapes = {
   generate(shapeType, canvasWidth, canvasHeight, config) {
+    // Check 3D shapes first
+    if (App.Shapes3D && App.Shapes3D._generators[shapeType]) {
+      return App.Shapes3D.generate(shapeType, canvasWidth, canvasHeight, config);
+    }
+
     const generator = this._generators[shapeType] || this._generators.v;
     const result = generator.call(this, canvasWidth, canvasHeight, config);
 

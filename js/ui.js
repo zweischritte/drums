@@ -123,6 +123,7 @@ App.UI = {
         { v: 'hexagon', l: 'Hexagon' },
         { v: 'circle', l: 'Circle' },
         { v: 'star', l: 'Star' },
+        { v: 'cube', l: 'Cube (3D)' },
       ], this.config.shapeType || 'v', 'shapeType'),
       this._createSelect('Physics Mode', [
         { v: 'pendulum', l: 'Pendulum (Arc)' },

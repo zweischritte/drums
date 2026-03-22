@@ -111,6 +111,10 @@ App.Main = {
         App.UI.config.mode = 'linear';
         App.Physics.config.mode = 'linear';
       }
+      // Auto-enable 3D for cube
+      if (key === 'shapeType' && value === 'cube' && !this.use3D) {
+        this._enable3D();
+      }
       const size = App.Renderer.getSize();
       App.Physics.updateWalls(size.width, size.height);
       if (key === 'shapeType' || key === 'shapeRotation') {

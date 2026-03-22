@@ -73,8 +73,11 @@ App.Physics = {
     this.balls = [];
     const n = this.config.numBalls;
     const isV = (this.config.shapeType || 'v') === 'v';
+    const is3D = this.shapeResult && this.shapeResult.is3D;
 
-    if (this.config.mode === 'pendulum' && isV) {
+    if (is3D) {
+      this._launchLinear3D(n);
+    } else if (this.config.mode === 'pendulum' && isV) {
       this._launchPendulum(n);
     } else {
       this._launchLinear(n);
@@ -193,7 +196,9 @@ App.Physics = {
     for (const ball of this.balls) {
       if (!ball.alive) continue;
 
-      if (ball.mode === 'pendulum') {
+      if (ball.mode === 'linear3d') {
+        this._updateLinear3D(ball, dt, now, collisions);
+      } else if (ball.mode === 'pendulum') {
         this._updatePendulum(ball, dt, now, collisions);
       } else {
         this._updateLinear(ball, dt, now, collisions);
@@ -319,6 +324,116 @@ App.Physics = {
     else if (ball.x > canvasW - ball.radius) { ball.x = canvasW - ball.radius; ball.vx = -Math.abs(ball.vx); }
     if (ball.y < ball.radius) { ball.y = ball.radius; ball.vy = Math.abs(ball.vy); }
     else if (ball.y > canvasH - ball.radius) { ball.y = canvasH - ball.radius; ball.vy = -Math.abs(ball.vy); }
+  },
+
+  // --- 3D Physics ---
+
+  _launchLinear3D(n) {
+    const src = this.shapeResult.ballSource3d || { x: 0, y: 0, z: 0 };
+    const speed = this.config.ballSpeed;
+    const goldenAngle = Math.PI * (1 + Math.sqrt(5));
+
+    for (let i = 0; i < n; i++) {
+      // Fibonacci sphere distribution for even 3D spread
+      const phi = Math.acos(1 - 2 * (i + 0.5) / n);
+      const theta = goldenAngle * i;
+
+      const vx = Math.sin(phi) * Math.cos(theta) * speed;
+      const vy = Math.sin(phi) * Math.sin(theta) * speed;
+      const vz = Math.cos(phi) * speed;
+      const hue = (i / n) * 360;
+
+      this.balls.push({
+        x: this.ballSource.x, y: this.ballSource.y,
+        z: 0,
+        x3d: src.x, y3d: src.y, z3d: src.z,
+        vx: vx, vy: vy, vz: vz,
+        originX: this.ballSource.x, originY: this.ballSource.y,
+        origin3d: { ...src },
+        radius: this.config.ballRadius,
+        color: `hsl(${hue}, 90%, 60%)`,
+        hue,
+        alive: true,
+        lastCollisionTime: 0,
+        bounceCount: 0,
+        mode: 'linear3d',
+      });
+    }
+  },
+
+  _updateLinear3D(ball, dt, now, collisions) {
+    if (this.config.friction > 0) {
+      const f = 1 - this.config.friction * dt * 3;
+      ball.vx *= Math.max(0, f);
+      ball.vy *= Math.max(0, f);
+      ball.vz *= Math.max(0, f);
+    }
+
+    // Gravity in y (down)
+    ball.vy -= this.config.gravity * dt;
+
+    // Move in 3D
+    ball.x3d += ball.vx * dt;
+    ball.y3d += ball.vy * dt;
+    ball.z3d += ball.vz * dt;
+
+    // Sphere-plane collision against all walls
+    for (let wi = 0; wi < this.walls.length; wi++) {
+      const wall = this.walls[wi];
+      if (!wall.plane3d) continue;
+
+      const p = wall.plane3d;
+      const n = p.normal;
+
+      // Signed distance from ball center to plane
+      const signedDist = (ball.x3d - p.center.x) * n.x
+                       + (ball.y3d - p.center.y) * n.y
+                       + (ball.z3d - p.center.z) * n.z;
+
+      // Ball is on the inward side and within radius
+      if (signedDist < ball.radius && signedDist > -ball.radius * 2) {
+        if ((now - ball.lastCollisionTime) > 50) {
+          // Push ball out
+          const penetration = ball.radius - signedDist;
+          ball.x3d += n.x * penetration;
+          ball.y3d += n.y * penetration;
+          ball.z3d += n.z * penetration;
+
+          // Reflect velocity
+          const vDotN = ball.vx * n.x + ball.vy * n.y + ball.vz * n.z;
+          const bounce = wall.bounce || this.config.wallBounce;
+          ball.vx = (ball.vx - 2 * vDotN * n.x) * bounce;
+          ball.vy = (ball.vy - 2 * vDotN * n.y) * bounce;
+          ball.vz = (ball.vz - 2 * vDotN * n.z) * bounce;
+
+          ball.lastCollisionTime = now;
+          ball.bounceCount++;
+
+          // Compute normalized distance (distance from center / max)
+          const dist = Math.sqrt(ball.x3d * ball.x3d + ball.y3d * ball.y3d + ball.z3d * ball.z3d);
+          const normDist = Math.min(1, dist / (this.wallLength * 0.5));
+
+          // Pan from wall position
+          const side = p.center.x > 0 ? 'right' : p.center.x < 0 ? 'left' : (p.center.z > 0 ? 'right' : 'left');
+
+          collisions.push({
+            x: ball.x3d + this.center.x,
+            y: -ball.y3d + this.center.y,
+            x3d: ball.x3d, y3d: ball.y3d, z3d: ball.z3d,
+            normalizedDistance: normDist,
+            ball,
+            velocity: Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy + ball.vz * ball.vz) / this.config.ballSpeed,
+            wallSide: side,
+            wallIndex: wi,
+            wall,
+          });
+        }
+      }
+    }
+
+    // Update 2D projection for compatibility
+    ball.x = ball.x3d + this.center.x;
+    ball.y = -ball.y3d + this.center.y;
   },
 
   _circleSegmentCollision(ball, A, B) {
