@@ -38,16 +38,20 @@ App.Renderer3D = {
     container.appendChild(this.renderer.domElement);
 
     // Lights
-    this.ambientLight = new THREE.AmbientLight(0x334433, 0.6);
+    this.ambientLight = new THREE.AmbientLight(0x667766, 0.8);
     this.scene.add(this.ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
     dirLight.position.set(200, 400, 300);
     dirLight.castShadow = true;
     this.scene.add(dirLight);
 
-    const pointLight = new THREE.PointLight(0x44ff88, 0.4, 1000);
-    pointLight.position.set(0, 200, 0);
+    const dirLight2 = new THREE.DirectionalLight(0x8888ff, 0.4);
+    dirLight2.position.set(-200, 200, -300);
+    this.scene.add(dirLight2);
+
+    const pointLight = new THREE.PointLight(0x44ff88, 0.6, 1500);
+    pointLight.position.set(0, 300, 0);
     this.scene.add(pointLight);
 
     // Ground plane (subtle grid)
@@ -108,12 +112,14 @@ App.Renderer3D = {
 
     const hueMap = App.Renderer.zoneHueMap;
 
-    for (const wall of walls) {
-      const hue = wall.instrument ? (hueMap[wall.instrument] || 0) : 0;
-      const baseColor = wall.instrument
-        ? new THREE.Color(`hsl(${hue}, 60%, 40%)`)
-        : new THREE.Color(0x335544);
-      const opacity = wall.muted ? 0.15 : 0.35;
+    // Assign distinct colors to walls without instruments
+    const wallHues = [200, 160, 280, 30, 340, 90];
+
+    for (let wi = 0; wi < walls.length; wi++) {
+      const wall = walls[wi];
+      const hue = wall.instrument ? (hueMap[wall.instrument] || 0) : wallHues[wi % wallHues.length];
+      const baseColor = new THREE.Color(`hsl(${hue}, 50%, 50%)`);
+      const opacity = wall.muted ? 0.15 : 0.6;
 
       if (wall.plane3d) {
         // 3D wall — use corners to build geometry
@@ -130,8 +136,8 @@ App.Renderer3D = {
           color: baseColor,
           transparent: true,
           opacity,
-          emissive: baseColor.clone().multiplyScalar(0.15),
-          shininess: 40,
+          emissive: baseColor.clone().multiplyScalar(0.3),
+          shininess: 60,
           side: THREE.DoubleSide,
         });
         const mesh = new THREE.Mesh(geometry, material);
@@ -147,7 +153,7 @@ App.Renderer3D = {
           c[3].x, c[3].y, c[3].z, c[0].x, c[0].y, c[0].z,
         ]);
         edgeGeo.setAttribute('position', new THREE.BufferAttribute(edgeVerts, 3));
-        const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+        const edgeMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 });
         const edges = new THREE.LineSegments(edgeGeo, edgeMat);
         this.scene.add(edges);
         this.wallMeshes.push(edges);
@@ -228,7 +234,7 @@ App.Renderer3D = {
 
         const color = new THREE.Color(`hsl(${ball.hue}, 90%, 60%)`);
         mesh.material.color = color;
-        mesh.material.emissive = color.clone().multiplyScalar(0.3);
+        mesh.material.emissive = color.clone().multiplyScalar(0.5);
 
         // Update trail
         trail.points.push({ x: px, y: py, z: pz });
