@@ -23,6 +23,7 @@ App.Physics = {
     friction: 0,
     shapeType: 'v',
     shapeRotation: 0,
+    wallOverrides: [],
   },
 
   // Multi-wall state
@@ -47,8 +48,24 @@ App.Physics = {
     this.wallLength = result.maxWallLength;
     this.shapeResult = result;
 
+    // Apply per-wall overrides from config
+    this._applyWallOverrides();
+
     // Backward compat for V-shape pendulum
     this.vertex = this.ballSource;
+  },
+
+  _applyWallOverrides() {
+    const overrides = this.config.wallOverrides;
+    if (!overrides || !Array.isArray(overrides)) return;
+    for (let i = 0; i < this.walls.length && i < overrides.length; i++) {
+      const ov = overrides[i];
+      if (!ov) continue;
+      if (ov.instrument !== undefined) this.walls[i].instrument = ov.instrument || null;
+      if (ov.volume !== undefined) this.walls[i].volume = ov.volume;
+      if (ov.muted !== undefined) this.walls[i].muted = ov.muted;
+      if (ov.bounce !== undefined) this.walls[i].bounce = ov.bounce;
+    }
   },
 
   _wallAngleAtRadius(wallIndex, radius) {

@@ -20,6 +20,7 @@ App.UI = {
     wallCurve: 0,
     wallBounce: 1.0,
     friction: 0,
+    wallOverrides: [],
     minRadius: 30,
     radiusStep: 30,
     swingSpeed: 2,
@@ -251,21 +252,47 @@ App.UI = {
   },
 
   // --- Per-wall instruments (polygon shapes) ---
+  _ensureWallOverrides(count) {
+    if (!Array.isArray(this.config.wallOverrides)) this.config.wallOverrides = [];
+    while (this.config.wallOverrides.length < count) {
+      this.config.wallOverrides.push({ instrument: null, volume: 1.0, muted: false });
+    }
+  },
+
+  _syncWallOverrides() {
+    // Write config overrides to physics walls and persist
+    App.Physics._applyWallOverrides();
+    this.onChange && this.onChange('wallOverrides', this.config.wallOverrides);
+  },
+
   _buildWallInstrumentsUI(panel) {
+    const walls = App.Physics.walls;
+    if (!walls.length) return;
+
+    this._ensureWallOverrides(walls.length);
+    // Sync config → walls on initial build
+    this.config.wallOverrides.forEach((ov, i) => {
+      if (i < walls.length && ov) {
+        if (ov.instrument) walls[i].instrument = ov.instrument;
+        if (ov.volume !== undefined) walls[i].volume = ov.volume;
+        if (ov.muted !== undefined) walls[i].muted = ov.muted;
+      }
+    });
+
     const section = document.createElement('div');
     section.className = 'section';
     const h2 = document.createElement('h2');
     h2.textContent = 'Wall Instruments';
     section.appendChild(h2);
 
-    const walls = App.Physics.walls;
-    const hueMap = App.Renderer.zoneHueMap;
+    const overrides = this.config.wallOverrides;
 
     walls.forEach((wall, i) => {
+      const ov = overrides[i] || { instrument: null, volume: 1.0, muted: false };
       const wrap = document.createElement('div');
       wrap.style.cssText = 'display:flex;gap:4px;align-items:center;margin-bottom:4px;';
 
-      // Wall number label
+      // Wall number
       const lbl = document.createElement('span');
       lbl.style.cssText = 'font-size:11px;color:#8b949e;width:16px;';
       lbl.textContent = (i + 1);
@@ -273,43 +300,48 @@ App.UI = {
 
       // Mute
       const muteBtn = document.createElement('button');
-      muteBtn.textContent = wall.muted ? '\u{1F507}' : '\u{1F50A}';
-      muteBtn.style.cssText = 'width:22px;height:20px;padding:0;background:' + (wall.muted ? '#da3633' : '#30363d') + ';color:#c9d1d9;border:none;border-radius:3px;cursor:pointer;font-size:11px;';
+      muteBtn.textContent = ov.muted ? '\u{1F507}' : '\u{1F50A}';
+      muteBtn.style.cssText = 'width:22px;height:20px;padding:0;background:' + (ov.muted ? '#da3633' : '#30363d') + ';color:#c9d1d9;border:none;border-radius:3px;cursor:pointer;font-size:11px;';
       muteBtn.addEventListener('click', () => {
-        wall.muted = !wall.muted;
-        this._buildWallInstrumentsUI_refresh(section, panel);
+        ov.muted = !ov.muted;
+        wall.muted = ov.muted;
+        const p = document.getElementById('panel');
+        this._buildControls(p);
+        this._syncWallOverrides();
       });
       wrap.appendChild(muteBtn);
 
       // Instrument select
       const sel = document.createElement('select');
       sel.style.cssText = 'flex:1;padding:3px;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:3px;font-size:11px;';
-      // "Default" option
       const defOpt = document.createElement('option');
       defOpt.value = '';
       defOpt.textContent = '(global)';
-      defOpt.selected = !wall.instrument;
+      defOpt.selected = !ov.instrument;
       sel.appendChild(defOpt);
       for (const opt of this._instrumentOptions) {
         const o = document.createElement('option');
         o.value = opt.v;
         o.textContent = opt.l;
-        o.selected = opt.v === wall.instrument;
+        o.selected = opt.v === ov.instrument;
         sel.appendChild(o);
       }
       sel.addEventListener('change', () => {
-        wall.instrument = sel.value || null;
-        this.onChange && this.onChange('wallInstruments', null);
+        ov.instrument = sel.value || null;
+        wall.instrument = ov.instrument;
+        this._syncWallOverrides();
       });
       wrap.appendChild(sel);
 
       // Volume
       const vol = document.createElement('input');
       vol.type = 'range';
-      vol.min = 0; vol.max = 100; vol.value = Math.round((wall.volume || 1) * 100);
+      vol.min = 0; vol.max = 100; vol.value = Math.round((ov.volume || 1) * 100);
       vol.style.cssText = 'width:40px;';
       vol.addEventListener('input', () => {
-        wall.volume = parseInt(vol.value) / 100;
+        ov.volume = parseInt(vol.value) / 100;
+        wall.volume = ov.volume;
+        this._syncWallOverrides();
       });
       wrap.appendChild(vol);
 
@@ -317,21 +349,6 @@ App.UI = {
     });
 
     panel.appendChild(section);
-  },
-
-  _buildWallInstrumentsUI_refresh(section, panel) {
-    const parent = section.parentNode;
-    const next = section.nextSibling;
-    parent.removeChild(section);
-    const newSection = document.createElement('div');
-    // Rebuild inline
-    const walls = App.Physics.walls;
-    newSection.className = 'section';
-    const h2 = document.createElement('h2');
-    h2.textContent = 'Wall Instruments';
-    newSection.appendChild(h2);
-    // Just rebuild the panel
-    this._buildControls(parent);
   },
 
   // --- Instrument list ---
