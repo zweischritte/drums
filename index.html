@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>V-Wall Drums</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+    }
+
+    /* --- Panel --- */
+    #panel {
+      width: 280px;
+      min-width: 280px;
+      height: 100vh;
+      overflow-y: auto;
+      background: #161b22;
+      border-right: 1px solid #30363d;
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    #panel::-webkit-scrollbar { width: 6px; }
+    #panel::-webkit-scrollbar-track { background: transparent; }
+    #panel::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+
+    .panel-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #e6edf3;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 10px 0;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-launch {
+      background: #238636;
+      color: #fff;
+    }
+    .btn-launch:hover { background: #2ea043; }
+    .btn-launch:active { transform: scale(0.97); }
+
+    .btn-reset {
+      background: #30363d;
+      color: #c9d1d9;
+    }
+    .btn-reset:hover { background: #3d444d; }
+
+    .section {
+      margin-bottom: 8px;
+    }
+
+    .section h2 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #8b949e;
+      margin-bottom: 10px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #21262d;
+    }
+
+    .control-row {
+      margin-bottom: 10px;
+    }
+
+    .control-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .control-row label {
+      font-size: 13px;
+      color: #c9d1d9;
+    }
+
+    .val {
+      font-size: 12px;
+      color: #8b949e;
+      font-variant-numeric: tabular-nums;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      background: #30363d;
+      border-radius: 2px;
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: #58a6ff;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid #161b22;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      background: #58a6ff;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid #161b22;
+    }
+
+    select {
+      width: 100%;
+      padding: 6px 8px;
+      background: #0d1117;
+      color: #c9d1d9;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+      margin-top: 4px;
+    }
+    select:focus { border-color: #58a6ff; }
+
+    .toggle-row {
+      padding: 8px 0;
+    }
+
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .toggle-label input[type="checkbox"] {
+      accent-color: #58a6ff;
+      width: 16px;
+      height: 16px;
+    }
+
+    /* --- Canvas area --- */
+    #canvas-wrap {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* --- Mobile toggle --- */
+    #panel-toggle {
+      display: none;
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      z-index: 1000;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: #238636;
+      border: none;
+      color: #fff;
+      font-size: 22px;
+      cursor: pointer;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    }
+
+    /* --- Mobile layout --- */
+    @media (max-width: 768px) {
+      body {
+        flex-direction: column;
+      }
+
+      #panel {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        min-width: unset;
+        height: 60vh;
+        max-height: 60vh;
+        border-right: none;
+        border-top: 1px solid #30363d;
+        border-radius: 16px 16px 0 0;
+        transform: translateY(100%);
+        transition: transform 0.3s ease;
+        z-index: 999;
+      }
+
+      #panel.open {
+        transform: translateY(0);
+      }
+
+      #panel-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      #canvas-wrap {
+        height: 100vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="panel"></div>
+  <div id="canvas-wrap">
+    <canvas id="canvas"></canvas>
+  </div>
+  <button id="panel-toggle" aria-label="Toggle controls">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 5v14M5 12h14"/>
+    </svg>
+  </button>
+
+  <script src="js/scales.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/physics.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
