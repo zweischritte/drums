@@ -14,6 +14,7 @@ App.UI = {
     startHeight: 0,
     spread: 100,
     launchAngle: 0,
+    render3D: false,
     shapeType: 'v',
     shapeRotation: 0,
     wallCurve: 0,
@@ -127,6 +128,10 @@ App.UI = {
         { v: 'pendulum', l: 'Pendulum (Arc)' },
         { v: 'linear', l: 'Linear (Bounce)' },
       ], this.config.mode, 'mode'),
+      this._createSelect('Renderer', [
+        { v: false, l: '2D Canvas' },
+        { v: true, l: '3D WebGL' },
+      ], this.config.render3D, 'render3D'),
     ]);
 
     // Shared controls

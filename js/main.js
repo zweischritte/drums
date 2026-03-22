@@ -6,9 +6,12 @@ App.Main = {
   running: false,
   scaleFreqs: [],
 
+  use3D: false,
+
   init() {
     const canvas = document.getElementById('canvas');
     const panel = document.getElementById('panel');
+    this.canvasWrap = document.getElementById('canvas-wrap');
 
     App.Renderer.init(canvas);
 
@@ -25,8 +28,10 @@ App.Main = {
 
     // Handle resize
     const ro = new ResizeObserver(() => {
-      const s = App.Renderer.resize();
-      App.Physics.updateWalls(s.width, s.height);
+      if (!this.use3D) {
+        const s = App.Renderer.resize();
+        App.Physics.updateWalls(s.width, s.height);
+      }
       if (!this.running) this._drawStatic();
     });
     ro.observe(canvas.parentElement);
@@ -39,15 +44,61 @@ App.Main = {
       });
     }
 
+    // Check if 3D was persisted
+    if (App.UI.config.render3D) {
+      this._enable3D();
+    }
+
     // Draw initial static scene
     this._drawStatic();
   },
 
+  async _enable3D() {
+    if (this.use3D) return;
+    const canvas = document.getElementById('canvas');
+    canvas.style.display = 'none';
+
+    const ok = await App.Renderer3D.init(this.canvasWrap);
+    if (ok) {
+      this.use3D = true;
+      App.Renderer3D.buildWalls(App.Physics.walls, App.Physics.center);
+      App.Renderer3D.render();
+    } else {
+      canvas.style.display = 'block';
+      App.UI.config.render3D = false;
+    }
+  },
+
+  _disable3D() {
+    if (!this.use3D) return;
+    this.use3D = false;
+    App.Renderer3D.dispose();
+    const canvas = document.getElementById('canvas');
+    canvas.style.display = 'block';
+    App.Renderer.resize();
+    const size = App.Renderer.getSize();
+    App.Physics.updateWalls(size.width, size.height);
+  },
+
   _drawStatic() {
-    App.Renderer.draw([], App.Physics.walls, App.Physics.vertex);
+    if (this.use3D) {
+      App.Renderer3D.buildWalls(App.Physics.walls, App.Physics.center);
+      App.Renderer3D.render();
+    } else {
+      App.Renderer.draw([], App.Physics.walls, App.Physics.vertex);
+    }
   },
 
   _onConfigChange(key, value) {
+    // 3D toggle
+    if (key === 'render3D') {
+      if (value === true || value === 'true') {
+        this._enable3D();
+      } else {
+        this._disable3D();
+      }
+    }
+
     // Physics params
     if (key in App.Physics.config) {
       App.Physics.config[key] = value;
@@ -162,9 +213,13 @@ App.Main = {
 
     // Sync all config to physics
     Object.assign(App.Physics.config, App.UI.config);
-    const size = App.Renderer.getSize();
+    const size = this.use3D ? App.Renderer3D.getSize() : App.Renderer.getSize();
     App.Physics.updateWalls(size.width, size.height);
     App.Physics.launchBalls();
+
+    if (this.use3D) {
+      App.Renderer3D.buildWalls(App.Physics.walls, App.Physics.center);
+    }
 
     this.running = true;
     this.lastTime = performance.now();
@@ -210,10 +265,19 @@ App.Main = {
       } else {
         App.Audio.playNote(freq, App.UI.config.instrument, c.velocity, pan, c.normalizedDistance);
       }
-      App.Renderer.addFlash(c.x, c.y, c.ball.color);
+      if (this.use3D) {
+        App.Renderer3D.addFlash(c.x, c.y, c.ball.color, App.Physics.center);
+      } else {
+        App.Renderer.addFlash(c.x, c.y, c.ball.color);
+      }
     }
 
-    App.Renderer.draw(App.Physics.balls, App.Physics.walls, App.Physics.vertex);
+    if (this.use3D) {
+      App.Renderer3D.updateBalls(App.Physics.balls, App.Physics.center);
+      App.Renderer3D.render();
+    } else {
+      App.Renderer.draw(App.Physics.balls, App.Physics.walls, App.Physics.vertex);
+    }
 
     if (App.Physics.hasActiveBalls()) {
       this.animationId = requestAnimationFrame(this._loop.bind(this));
